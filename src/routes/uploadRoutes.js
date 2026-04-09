@@ -98,37 +98,40 @@ router.post(
             if (!fs.existsSync(mobileDir)) fs.mkdirSync(mobileDir, { recursive: true });
             if (!fs.existsSync(thumbDir)) fs.mkdirSync(thumbDir, { recursive: true });
 
-            // Yangi ismlarni yaratish
-            const mobileFilename = filename.replace('image-', 'mobile-').replace('full-', 'mobile-');
-            const thumbFilename = filename.replace('image-', 'thumb-').replace('full-', 'thumb-');
+            // Yangi ismlarni yaratish (WebP formatiga o'tkazamiz)
+            const mobileFilename = filename.replace('image-', 'mobile-').replace('full-', 'mobile-').replace(/\.[^.]+$/, '.webp');
+            const thumbFilename = filename.replace('image-', 'thumb-').replace('full-', 'thumb-').replace(/\.[^.]+$/, '.webp');
+            const finalFullFilename = filename.replace(/\.[^.]+$/, '.webp');
 
             const mobileFilePath = path.join(mobileDir, mobileFilename);
             const thumbFilePath = path.join(thumbDir, thumbFilename);
 
-            // 1. Mobile versiyasini yaratish (Enini 2048px gacha pasaytiramiz)
+            // 1. Mobile versiyasini yaratish (Enini 2048px, WebP 70%)
             await sharp(originalPath)
                 .resize({ width: 2048, withoutEnlargement: true })
-                .jpeg({ quality: 75 })
+                .webp({ quality: 70 })
                 .toFile(mobileFilePath);
 
-            // 2. Thumb qirqib olish (4:3 o'lchamda markazdan)
+            // 2. Thumb qirqib olish (480x360, WebP 80%)
             await sharp(originalPath)
                 .resize(480, 360, { fit: 'cover', position: 'centre' })
-                .jpeg({ quality: 80 })
+                .webp({ quality: 80 })
                 .toFile(thumbFilePath);
 
-            // 3. Original faylni tushirish (Masalan eni max 4000px, 85% sifat)
-            const tempOriginalPath = originalPath + '.tmp.jpg';
+            // 3. Full versiyasini yaratish (Eni max 4000px, WebP 80%)
+            const fullFilePath = path.join(UPLOAD_ROOT, 'full', finalFullFilename);
             await sharp(originalPath)
                 .resize({ width: 4000, withoutEnlargement: true })
-                .jpeg({ quality: 85 })
-                .toFile(tempOriginalPath);
+                .webp({ quality: 80 })
+                .toFile(fullFilePath);
 
-            // Originalligini o'zgartirib faylni qayta nomlash
-            fs.renameSync(tempOriginalPath, originalPath);
+            // Agar original fayl nomi o'zgargan bo'lsa (masalan .jpg -> .webp), eski faylni o'chirib tashlaymiz
+            if (path.join(UPLOAD_ROOT, 'full', filename) !== fullFilePath) {
+                fs.unlinkSync(originalPath);
+            }
 
             const result = {
-                full: `${baseUrl}/uploads/full/${filename}`,
+                full: `${baseUrl}/uploads/full/${finalFullFilename}`,
                 mobile: `${baseUrl}/uploads/mobile/${mobileFilename}`,
                 thumb: `${baseUrl}/uploads/thumb/${thumbFilename}`,
             };
