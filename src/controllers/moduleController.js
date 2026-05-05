@@ -2,6 +2,13 @@ const Module = require('../models/Module');
 const Scene = require('../models/Scene');
 const MiniMap = require('../models/MiniMap');
 
+// ─── Helper: moduleSlug dan moduleId olish ────────────────────
+const resolveModuleId = async (slug) => {
+    const mod = await Module.findOne({ slug });
+    if (!mod) return null;
+    return mod._id;
+};
+
 // ─── GET /api/modules ─────────────────────────────────────────
 // Barcha modullarni olish (faqat faol modullar, tartib bo'yicha)
 const getAllModules = async (req, res) => {
@@ -68,10 +75,10 @@ const createModule = async (req, res) => {
 
         const mod = await Module.create(req.body);
 
-        // Modul uchun bo'sh MiniMap yaratish
+        // Modul uchun bo'sh MiniMap yaratish (moduleId bilan)
         await MiniMap.findOneAndUpdate(
-            { moduleSlug: mod.slug },
-            { $setOnInsert: { moduleSlug: mod.slug, image: '', width: 0, height: 0, scenes: [] } },
+            { moduleId: mod._id },
+            { $setOnInsert: { moduleId: mod._id, moduleSlug: mod.slug, image: '', width: 0, height: 0, scenes: [] } },
             { upsert: true, new: true }
         );
 
@@ -104,42 +111,90 @@ const createModule = async (req, res) => {
 };
 
 // ─── PATCH /api/modules/:moduleSlug ───────────────────────────
-// Modulni yangilash (slug o'zgartirib bo'lmaydi)
+// Modulni yangilash (slug o'zgartirish mumkin!)
 const updateModule = async (req, res) => {
     try {
-        // Slug o'zgartirishga ruxsat bermaydi
-        if (req.body.slug && req.body.slug !== req.params.moduleSlug) {
-            return res.status(400).json({
+        const oldSlug = req.params.moduleSlug;
+
+        // Modulni topish
+        const mod = await Module.findOne({ slug: oldSlug });
+        if (!mod) {
+            return res.status(404).json({
                 success: false,
-                message: 'Modul slug ini o\'zgartirish mumkin emas',
+                message: `"${oldSlug}" slug li modul topilmadi`,
             });
         }
 
-        const updates = { ...req.body };
-        delete updates.slug; // Slug o'zgartirishni bloklash
+        // Yangi slug tekshirish (agar o'zgartirilayotgan bo'lsa)
+        let newSlug = null;
+        if (req.body.slug && typeof req.body.slug === 'string') {
+            newSlug = req.body.slug.trim().toLowerCase();
+            
+            if (newSlug !== oldSlug) {
+                // Yangi slug validatsiya
+                if (!/^[a-z0-9]+(?:-[a-z0-9]+)*$/.test(newSlug)) {
+                    return res.status(400).json({
+                        success: false,
+                        message: 'Slug faqat kichik lotin harflari, raqamlar va defis (-) dan iborat bo\'lishi kerak',
+                    });
+                }
 
-        const mod = await Module.findOneAndUpdate(
-            { slug: req.params.moduleSlug },
+                // Dublikat tekshirish
+                const existingWithNewSlug = await Module.findOne({ slug: newSlug });
+                if (existingWithNewSlug) {
+                    return res.status(400).json({
+                        success: false,
+                        message: `"${newSlug}" slug li modul allaqachon mavjud`,
+                    });
+                }
+            } else {
+                newSlug = null; // Slug o'zgartirilmayapti
+            }
+        }
+
+        // Modulni yangilash
+        const updates = { ...req.body };
+        if (newSlug) {
+            updates.slug = newSlug;
+        }
+
+        const updatedMod = await Module.findByIdAndUpdate(
+            mod._id,
             { $set: updates },
             { new: true, runValidators: true }
         );
 
-        if (!mod) {
-            return res.status(404).json({
-                success: false,
-                message: `"${req.params.moduleSlug}" slug li modul topilmadi`,
-            });
+        // Agar slug o'zgartirilgan bo'lsa — bog'langan Scene va MiniMap lardagi moduleSlug ni ham yangilash
+        if (newSlug) {
+            await Scene.updateMany(
+                { moduleId: mod._id },
+                { $set: { moduleSlug: newSlug } }
+            );
+            await MiniMap.updateMany(
+                { moduleId: mod._id },
+                { $set: { moduleSlug: newSlug } }
+            );
         }
 
         res.status(200).json({
             success: true,
-            message: 'Modul yangilandi',
-            data: mod,
+            message: newSlug
+                ? `Modul yangilandi. Slug "${oldSlug}" → "${newSlug}" ga o'zgartirildi.`
+                : 'Modul yangilandi',
+            data: updatedMod,
+            slugChanged: !!newSlug,
+            newSlug: newSlug || oldSlug,
         });
     } catch (error) {
         if (error.name === 'ValidationError') {
             const messages = Object.values(error.errors).map((e) => e.message);
             return res.status(400).json({ success: false, message: 'Validation error', errors: messages });
+        }
+        if (error.code === 11000) {
+            return res.status(400).json({
+                success: false,
+                message: `Bu slug allaqachon band`,
+            });
         }
         res.status(500).json({
             success: false,
@@ -155,24 +210,7 @@ const deleteModule = async (req, res) => {
     try {
         const { moduleSlug } = req.params;
 
-        // Default modulni o'chirishga ruxsat bermaydi
-        if (moduleSlug === 'default') {
-            return res.status(400).json({
-                success: false,
-                message: 'Default modulni o\'chirish mumkin emas',
-            });
-        }
-
-        // Modulga tegishli sahnalar mavjudligini tekshirish
-        const sceneCount = await Scene.countDocuments({ moduleSlug });
-        if (sceneCount > 0) {
-            return res.status(400).json({
-                success: false,
-                message: `Modulda ${sceneCount} ta sahna mavjud. Avval sahnalarni o'chiring.`,
-            });
-        }
-
-        const mod = await Module.findOneAndDelete({ slug: moduleSlug });
+        const mod = await Module.findOne({ slug: moduleSlug });
         if (!mod) {
             return res.status(404).json({
                 success: false,
@@ -180,8 +218,28 @@ const deleteModule = async (req, res) => {
             });
         }
 
+        // Oxirgi qolgan modulni o'chirishga ruxsat bermaydi
+        const totalModules = await Module.countDocuments();
+        if (totalModules <= 1) {
+            return res.status(400).json({
+                success: false,
+                message: 'Oxirgi modulni o\'chirish mumkin emas. Kamida bitta modul bo\'lishi kerak.',
+            });
+        }
+
+        // Modulga tegishli sahnalar mavjudligini tekshirish
+        const sceneCount = await Scene.countDocuments({ moduleId: mod._id });
+        if (sceneCount > 0) {
+            return res.status(400).json({
+                success: false,
+                message: `Modulda ${sceneCount} ta sahna mavjud. Avval sahnalarni o'chiring.`,
+            });
+        }
+
+        await Module.findByIdAndDelete(mod._id);
+
         // Modulga tegishli MiniMap ni ham o'chirish
-        await MiniMap.deleteOne({ moduleSlug });
+        await MiniMap.deleteOne({ moduleId: mod._id });
 
         res.status(200).json({
             success: true,
@@ -196,10 +254,10 @@ const deleteModule = async (req, res) => {
     }
 };
 
-// ─── Ensure default module exists (called on server start) ────
-const ensureDefaultModule = async () => {
-    const existing = await Module.findOne({ slug: 'default' });
-    if (!existing) {
+// ─── Ensure at least one module exists (called on server start) ────
+const ensureAtLeastOneModule = async () => {
+    const count = await Module.countDocuments();
+    if (count === 0) {
         await Module.create({
             slug: 'default',
             name: { uz: 'Asosiy', ru: 'Основной', en: 'Default' },
@@ -207,7 +265,46 @@ const ensureDefaultModule = async () => {
             order: 0,
             isActive: true,
         });
-        console.log('📦 [Module] Default modul yaratildi.');
+        console.log('📦 [Module] Hech qanday modul topilmadi, standart modul yaratildi.');
+    }
+};
+
+// ─── Migratsiya: moduleSlug → moduleId (server startda ishlatiladi) ──
+const migrateModuleReferences = async () => {
+    // 1. moduleId yo'q bo'lgan Scene larni topib, moduleSlug orqali moduleId qo'yish
+    const scenesWithoutModuleId = await Scene.find({ moduleId: { $exists: false } });
+    if (scenesWithoutModuleId.length > 0) {
+        console.log(`🔄 [Migration] ${scenesWithoutModuleId.length} ta scene moduleId ga migratsiya qilinmoqda...`);
+        for (const scene of scenesWithoutModuleId) {
+            const mod = await Module.findOne({ slug: scene.moduleSlug });
+            if (mod) {
+                await Scene.updateOne(
+                    { _id: scene._id },
+                    { $set: { moduleId: mod._id } }
+                );
+            } else {
+                console.warn(`⚠️ [Migration] "${scene.moduleSlug}" slug li modul topilmadi. Scene ID: ${scene.id}`);
+            }
+        }
+        console.log('✅ [Migration] Scene migratsiyasi yakunlandi.');
+    }
+
+    // 2. moduleId yo'q bo'lgan MiniMap larni topib, moduleSlug orqali moduleId qo'yish
+    const mapsWithoutModuleId = await MiniMap.find({ moduleId: { $exists: false } });
+    if (mapsWithoutModuleId.length > 0) {
+        console.log(`🔄 [Migration] ${mapsWithoutModuleId.length} ta MiniMap moduleId ga migratsiya qilinmoqda...`);
+        for (const map of mapsWithoutModuleId) {
+            const mod = await Module.findOne({ slug: map.moduleSlug });
+            if (mod) {
+                await MiniMap.updateOne(
+                    { _id: map._id },
+                    { $set: { moduleId: mod._id } }
+                );
+            } else {
+                console.warn(`⚠️ [Migration] "${map.moduleSlug}" slug li modul topilmadi. MiniMap ID: ${map._id}`);
+            }
+        }
+        console.log('✅ [Migration] MiniMap migratsiyasi yakunlandi.');
     }
 };
 
@@ -217,5 +314,7 @@ module.exports = {
     createModule,
     updateModule,
     deleteModule,
-    ensureDefaultModule,
+    ensureAtLeastOneModule,
+    migrateModuleReferences,
+    resolveModuleId,
 };

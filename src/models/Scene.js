@@ -30,14 +30,32 @@ const pinSchema = new mongoose.Schema(
             min: 0,
             max: 100,
         },
+        // Navigatsiya pinlari uchun majburiy, info pinlari uchun ixtiyoriy
         target: {
             type: String,
-            required: [true, 'Pin target (scene id) is required'],
+            default: '',
         },
         icon: {
             type: String,
-            enum: ['pin', 'circle'],
+            enum: ['pin', 'info', 'circle'],  // 'circle' — backward compat, yangi: 'info'
             default: 'pin',
+        },
+        // ─── Info pin uchun qo'shimcha maydonlar ──────────────
+        title: {
+            uz: { type: String, default: '' },
+            ru: { type: String, default: '' },
+            en: { type: String, default: '' },
+        },
+        description: {
+            uz: { type: String, default: '' },
+            ru: { type: String, default: '' },
+            en: { type: String, default: '' },
+        },
+        // Audio fayllar (har bir til uchun alohida)
+        audio: {
+            uz: { type: String, default: '' },
+            ru: { type: String, default: '' },
+            en: { type: String, default: '' },
         },
     },
     { _id: false }
@@ -49,6 +67,7 @@ const imageSchema = new mongoose.Schema(
         full: { type: String, default: '' },
         mobile: { type: String, default: '' },
         thumb: { type: String, default: '' },
+        preview: { type: String, default: '' },
     },
     { _id: false }
 );
@@ -56,10 +75,15 @@ const imageSchema = new mongoose.Schema(
 // ─── Main Schema: Scene ───────────────────────────────────────
 const sceneSchema = new mongoose.Schema(
     {
-        // Qaysi modulga tegishli ekanligi
+        // Qaysi modulga tegishli ekanligi — o'zgarmas ID orqali
+        moduleId: {
+            type: mongoose.Schema.Types.ObjectId,
+            ref: 'Module',
+            required: [true, 'Module ID is required'],
+        },
+        // Eski format uchun backward compatibility (migratsiyagacha)
         moduleSlug: {
             type: String,
-            required: [true, 'Module slug is required'],
             trim: true,
             lowercase: true,
         },
@@ -75,6 +99,10 @@ const sceneSchema = new mongoose.Schema(
         initialScene: {
             type: mongoose.Schema.Types.Mixed,
             default: false,
+        },
+        initialCameraX: {
+            type: Number,
+            default: 0,
         },
         northOffset: {
             type: Number,
@@ -109,8 +137,10 @@ const sceneSchema = new mongoose.Schema(
 
 // Compound unique: bitta modul ichida scene id takrorlanmaydi
 // Lekin turli modullarda bir xil id ishlatilishi mumkin
-sceneSchema.index({ moduleSlug: 1, id: 1 }, { unique: true });
+sceneSchema.index({ moduleId: 1, id: 1 }, { unique: true });
 // Modul bo'yicha tezkor qidirish
-sceneSchema.index({ moduleSlug: 1, createdAt: 1 });
+sceneSchema.index({ moduleId: 1, createdAt: 1 });
+// Eski format uchun index (backward compatibility)
+sceneSchema.index({ moduleSlug: 1, id: 1 });
 
 module.exports = mongoose.model('Scene', sceneSchema);

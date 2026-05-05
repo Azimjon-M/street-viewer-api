@@ -125,7 +125,8 @@ router.post('/', protect, createModule);
  *       - Modules
  *     summary: Modulni yangilash 🔒
  *     description: >
- *       Modulni qisman yangilaydi. Slug o'zgartirib bo'lmaydi.
+ *       Modulni qisman yangilaydi. Slug ni ham o'zgartirish mumkin —
+ *       bog'langan Scene va MiniMap lardagi moduleSlug avtomatik yangilanadi.
  *       **Autentifikatsiya talab etiladi.**
  *     operationId: updateModule
  *     security:

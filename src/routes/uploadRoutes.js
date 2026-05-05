@@ -73,7 +73,6 @@ router.post(
     async (req, res) => {
         try {
             const files = req.files || {};
-            const baseUrl = `${req.protocol}://${req.get('host')}`;
 
             // 1 ta qabul qilingan rasmni tanlaymiz ("image" yoki eski interfeysdan "full")
             const uploadedFile = (files.image && files.image[0]) || (files.full && files.full[0]);
@@ -131,9 +130,9 @@ router.post(
             }
 
             const result = {
-                full: `${baseUrl}/uploads/full/${finalFullFilename}`,
-                mobile: `${baseUrl}/uploads/mobile/${mobileFilename}`,
-                thumb: `${baseUrl}/uploads/thumb/${thumbFilename}`,
+                full: `/uploads/full/${finalFullFilename}`,
+                mobile: `/uploads/mobile/${mobileFilename}`,
+                thumb: `/uploads/thumb/${thumbFilename}`,
             };
 
             res.status(200).json({
@@ -227,12 +226,11 @@ router.post('/minimap-image', protect, upload.single('mapImage'), (req, res) => 
                 message: 'No minimap image provided',
             });
         }
-        const baseUrl = `${req.protocol}://${req.get('host')}`;
         res.status(200).json({
             success: true,
             message: 'MiniMap image uploaded successfully',
             data: {
-                image: `${baseUrl}/uploads/minimap/${req.file.filename}`,
+                image: `/uploads/minimap/${req.file.filename}`,
             },
         });
     } catch (error) {

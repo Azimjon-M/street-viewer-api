@@ -50,8 +50,8 @@ const corsOptions = {
 
 app.use(cors(corsOptions));
 
-app.use(express.json({ limit: '10mb' }));
-app.use(express.urlencoded({ extended: true, limit: '10mb' }));
+app.use(express.json({ limit: '70mb' }));
+app.use(express.urlencoded({ extended: true, limit: '70mb' }));
 
 // Serve uploaded images as static files
 app.use('/uploads', express.static(path.join(__dirname, '../uploads')));

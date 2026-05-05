@@ -119,7 +119,7 @@ router.post('/login', login);
  *             schema:
  *               $ref: '#/components/schemas/ErrorResponse'
  */
-router.post('/register', register);
+router.post('/register', protect, register);
 
 /**
  * @swagger

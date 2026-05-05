@@ -1,13 +1,25 @@
 const MiniMap = require('../models/MiniMap');
+const Module = require('../models/Module');
 
-// ─── Helper: moduleSlug ni olish ──────────────────────────────
-const getModuleSlug = (req) => req.params.moduleSlug || 'default';
+// ─── Helper: moduleSlug dan Module ni olish ───────────────────
+const resolveModule = async (req) => {
+    const slug = req.params.moduleSlug || 'default';
+    const mod = await Module.findOne({ slug });
+    return mod;
+};
 
 // ─── Ensure MiniMap exists for a module (called on server start) ──
 const ensureDefaultMiniMap = async (moduleSlug = 'default') => {
-    const existing = await MiniMap.findOne({ moduleSlug });
+    const mod = await Module.findOne({ slug: moduleSlug });
+    if (!mod) return;
+
+    const existing = await MiniMap.findOne({ moduleId: mod._id });
     if (!existing) {
-        await MiniMap.create({ moduleSlug, image: '', width: 0, height: 0, scenes: [] });
+        await MiniMap.create({
+            moduleId: mod._id,
+            moduleSlug: mod.slug,
+            image: '', width: 0, height: 0, scenes: [], floors: [], defaultFloor: 1
+        });
         console.log(`🗺️  [MiniMap] "${moduleSlug}" modul uchun MiniMap yaratildi.`);
     }
 };
@@ -16,12 +28,19 @@ const ensureDefaultMiniMap = async (moduleSlug = 'default') => {
 // Modul bo'yicha MiniMap ni olish
 const getMiniMap = async (req, res) => {
     try {
-        const moduleSlug = getModuleSlug(req);
-        const miniMap = await MiniMap.findOne({ moduleSlug });
+        const mod = await resolveModule(req);
+        if (!mod) {
+            return res.status(404).json({
+                success: false,
+                message: `"${req.params.moduleSlug || 'default'}" modul topilmadi.`,
+            });
+        }
+
+        const miniMap = await MiniMap.findOne({ moduleId: mod._id });
         if (!miniMap) {
             return res.status(404).json({
                 success: false,
-                message: `"${moduleSlug}" modul uchun MiniMap topilmadi.`,
+                message: `"${mod.slug}" modul uchun MiniMap topilmadi.`,
             });
         }
         res.status(200).json({ success: true, data: miniMap });
@@ -31,10 +50,17 @@ const getMiniMap = async (req, res) => {
 };
 
 // ─── POST /minimap ────────────────────────────────────────────
-// Modul MiniMap asosiy datasini o'rnatish
+// Modul MiniMap asosiy datasini o'rnatish (eski format — backward compat)
 const setMiniMap = async (req, res) => {
     try {
-        const moduleSlug = getModuleSlug(req);
+        const mod = await resolveModule(req);
+        if (!mod) {
+            return res.status(404).json({
+                success: false,
+                message: `"${req.params.moduleSlug || 'default'}" modul topilmadi.`,
+            });
+        }
+
         const { image, width, height } = req.body;
 
         if (!image || !width || !height) {
@@ -45,8 +71,8 @@ const setMiniMap = async (req, res) => {
         }
 
         const miniMap = await MiniMap.findOneAndUpdate(
-            { moduleSlug },
-            { $set: { image, width, height } },
+            { moduleId: mod._id },
+            { $set: { image, width, height, moduleSlug: mod.slug } },
             { new: true, runValidators: true, upsert: true }
         );
 
@@ -68,8 +94,15 @@ const setMiniMap = async (req, res) => {
 // Modul MiniMap ni qisman yangilash
 const patchMiniMap = async (req, res) => {
     try {
-        const moduleSlug = getModuleSlug(req);
-        const allowed = ['image', 'width', 'height', 'scenes'];
+        const mod = await resolveModule(req);
+        if (!mod) {
+            return res.status(404).json({
+                success: false,
+                message: `"${req.params.moduleSlug || 'default'}" modul topilmadi.`,
+            });
+        }
+
+        const allowed = ['image', 'width', 'height', 'scenes', 'floors', 'defaultFloor'];
         const updates = {};
 
         allowed.forEach((field) => {
@@ -81,13 +114,13 @@ const patchMiniMap = async (req, res) => {
         if (Object.keys(updates).length === 0) {
             return res.status(400).json({
                 success: false,
-                message: "Hech qanday yangilanadigan field yo'q. Ruxsat etilganlar: image, width, height, scenes",
+                message: "Hech qanday yangilanadigan field yo'q. Ruxsat etilganlar: " + allowed.join(', '),
             });
         }
 
         const miniMap = await MiniMap.findOneAndUpdate(
-            { moduleSlug },
-            { $set: updates },
+            { moduleId: mod._id },
+            { $set: { ...updates, moduleSlug: mod.slug } },
             { new: true, runValidators: true, upsert: true }
         );
 

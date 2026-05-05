@@ -4,7 +4,7 @@ const fs = require('fs');
 
 // Ensure upload directories exist
 const UPLOAD_ROOT = path.join(__dirname, '../../uploads');
-const dirs = ['full', 'mobile', 'thumb', 'minimap', 'module-thumb'];
+const dirs = ['full', 'mobile', 'thumb', 'preview', 'minimap', 'module-thumb', 'audio'];
 dirs.forEach((dir) => {
     const dirPath = path.join(UPLOAD_ROOT, dir);
     if (!fs.existsSync(dirPath)) {
@@ -23,6 +23,9 @@ const storage = multer.diskStorage({
             mapImage: 'minimap',
             thumbnail: 'module-thumb',
             image: 'full', // Bitta rasm kelganida avval 'full' papkasiga tushadi
+            audio_uz: 'audio',
+            audio_ru: 'audio',
+            audio_en: 'audio',
         };
         const folder = fieldFolderMap[file.fieldname] || 'full';
         cb(null, path.join(UPLOAD_ROOT, folder));
@@ -49,7 +52,33 @@ const fileFilter = (req, file, cb) => {
 const upload = multer({
     storage,
     fileFilter,
-    limits: { fileSize: 50 * 1024 * 1024 }, // 50 MB max
+    limits: { fileSize: 70 * 1024 * 1024 }, // 70 MB max
+});
+
+// Audio file type filter
+const audioFileFilter = (req, file, cb) => {
+    // Rasm fieldlari uchun rasm filtrini, audio fieldlari uchun audio filtrini ishlatish
+    if (file.fieldname.startsWith('audio')) {
+        const allowed = /mp3|wav|ogg|m4a|webm|mpeg|audio/;
+        const extOk = allowed.test(path.extname(file.originalname).toLowerCase());
+        const mimeOk = file.mimetype.startsWith('audio/');
+        if (extOk || mimeOk) {
+            cb(null, true);
+        } else {
+            cb(new Error('Only audio files are allowed (mp3, wav, ogg, m4a, webm)'));
+        }
+    } else {
+        // Rasm filtri
+        fileFilter(req, file, cb);
+    }
+};
+
+// Rasm + Audio aralash upload (scene pinlari uchun)
+const mixedUpload = multer({
+    storage,
+    fileFilter: audioFileFilter,
+    limits: { fileSize: 70 * 1024 * 1024 },
 });
 
 module.exports = upload;
+module.exports.mixedUpload = mixedUpload;

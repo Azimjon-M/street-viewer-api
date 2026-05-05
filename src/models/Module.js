@@ -40,6 +40,13 @@ const moduleSchema = new mongoose.Schema(
         thumbnail: {
             type: String,
             default: '',
+            validate: {
+                validator: function (v) {
+                    if (!v) return true; // Bo'sh bo'lishi mumkin
+                    return v.startsWith('/uploads/');
+                },
+                message: "Faqat tizimga yuklangan rasm (file) ruxsat etiladi, tashqi URL emas",
+            },
         },
         // Tartib raqami (ro'yxatda ko'rsatish uchun)
         order: {

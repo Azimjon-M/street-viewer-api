@@ -3,7 +3,7 @@ const app = require('./app');
 const connectDB = require('./config/db');
 const { startCleanupScheduler } = require('./config/scheduler');
 const { ensureDefaultMiniMap } = require('./controllers/miniMapController');
-const { ensureDefaultModule } = require('./controllers/moduleController');
+const { ensureAtLeastOneModule, migrateModuleReferences } = require('./controllers/moduleController');
 
 const PORT = process.env.PORT || 5000;
 const HOST = process.env.HOST || '0.0.0.0';
@@ -25,11 +25,18 @@ function getNetworkIp() {
 const startServer = async () => {
     await connectDB();
 
-    // ─── Ensure default module exists ─────────────────────────
-    await ensureDefaultModule();
+    // ─── Ensure at least one module exists ─────────────────────────
+    await ensureAtLeastOneModule();
 
-    // ─── Ensure default MiniMap document exists ────────────────
-    await ensureDefaultMiniMap('default');
+    // ─── Ensure MiniMap for first module ────────────────────────────
+    const Module = require('./models/Module');
+    const firstMod = await Module.findOne().sort({ order: 1, createdAt: 1 });
+    if (firstMod) {
+        await ensureDefaultMiniMap(firstMod.slug);
+    }
+
+    // ─── Migratsiya: moduleSlug → moduleId ─────────────────────
+    await migrateModuleReferences();
 
     app.listen(PORT, HOST, () => {
         const networkIp = getNetworkIp();

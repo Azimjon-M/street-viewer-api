@@ -1,24 +1,37 @@
 const mongoose = require('mongoose');
 const Scene = require('../models/Scene');
 const MiniMap = require('../models/MiniMap');
+const Module = require('../models/Module');
 
-// ─── Helper: moduleSlug ni olish ──────────────────────────────
-// Yangi routelardan req.params.moduleSlug, eski routelardan 'default'
-const getModuleSlug = (req) => req.params.moduleSlug || 'default';
+// ─── Helper: moduleSlug dan moduleId ni olish ─────────────────
+const resolveModule = async (req) => {
+    const slug = req.params.moduleSlug || 'default';
+    const mod = await Module.findOne({ slug });
+    return mod;
+};
 
 // ─── Helper: pin id larni avtomatik to'ldirish ────────────────
 const normalizePins = (pins = []) =>
     pins.map((pin) => ({
         ...pin,
         id: pin.id && pin.id.trim() ? pin.id.trim() : new mongoose.Types.ObjectId().toHexString(),
+        // 'circle' → 'info' migratsiya (backward compat)
+        icon: pin.icon === 'circle' ? 'info' : (pin.icon || 'pin'),
     }));
 
 // ─── GET /scenes ──────────────────────────────────────────────
 // Modul bo'yicha barcha sahnalarni olish
 const getAllScenes = async (req, res) => {
     try {
-        const moduleSlug = getModuleSlug(req);
-        const scenes = await Scene.find({ moduleSlug }).sort({ createdAt: 1 });
+        const mod = await resolveModule(req);
+        if (!mod) {
+            return res.status(404).json({
+                success: false,
+                message: `"${req.params.moduleSlug || 'default'}" slug li modul topilmadi`,
+            });
+        }
+
+        const scenes = await Scene.find({ moduleId: mod._id }).sort({ createdAt: 1 });
         res.status(200).json({
             success: true,
             count: scenes.length,
@@ -37,12 +50,19 @@ const getAllScenes = async (req, res) => {
 // Modul ichidan bitta sahnani olish
 const getSceneById = async (req, res) => {
     try {
-        const moduleSlug = getModuleSlug(req);
-        const scene = await Scene.findOne({ moduleSlug, id: req.params.id });
+        const mod = await resolveModule(req);
+        if (!mod) {
+            return res.status(404).json({
+                success: false,
+                message: `"${req.params.moduleSlug || 'default'}" slug li modul topilmadi`,
+            });
+        }
+
+        const scene = await Scene.findOne({ moduleId: mod._id, id: req.params.id });
         if (!scene) {
             return res.status(404).json({
                 success: false,
-                message: `Scene with id "${req.params.id}" not found in module "${moduleSlug}"`,
+                message: `Scene with id "${req.params.id}" not found in module "${mod.slug}"`,
             });
         }
         res.status(200).json({
@@ -62,15 +82,32 @@ const getSceneById = async (req, res) => {
 // Modul ichida yangi sahna yaratish
 const createScene = async (req, res) => {
     try {
-        const moduleSlug = getModuleSlug(req);
+        const mod = await resolveModule(req);
+        if (!mod) {
+            return res.status(404).json({
+                success: false,
+                message: `"${req.params.moduleSlug || 'default'}" slug li modul topilmadi`,
+            });
+        }
 
-        // Trim ID
-        if (req.body.id && typeof req.body.id === 'string') {
+        // Auto-generate ID if not provided
+        if (!req.body.id || typeof req.body.id !== 'string' || req.body.id.trim() === '') {
+            const existingScenes = await Scene.find({ moduleId: mod._id }, { id: 1 }).lean();
+            let maxNum = 0;
+            existingScenes.forEach(s => {
+                const match = s.id.match(/^scene-(\d+)$/i);
+                if (match) {
+                    const num = parseInt(match[1], 10);
+                    if (num > maxNum) maxNum = num;
+                }
+            });
+            req.body.id = `scene-${maxNum + 1}`;
+        } else {
             req.body.id = req.body.id.trim();
         }
 
         // Modul ichida dublikat tekshirish
-        const existing = await Scene.findOne({ moduleSlug, id: req.body.id });
+        const existing = await Scene.findOne({ moduleId: mod._id, id: req.body.id });
         if (existing) {
             return res.status(400).json({
                 success: false,
@@ -78,13 +115,13 @@ const createScene = async (req, res) => {
             });
         }
 
-        const data = { ...req.body, moduleSlug };
+        const data = { ...req.body, moduleId: mod._id, moduleSlug: mod.slug };
         if (data.pins) data.pins = normalizePins(data.pins);
 
         // Agar bu sahna initialScene bo'lsa, shu modul ichida boshqalarini false qilish
         if (data.initialScene) {
             await Scene.updateMany(
-                { moduleSlug },
+                { moduleId: mod._id },
                 { $set: { initialScene: false } }
             );
         }
@@ -122,7 +159,13 @@ const createScene = async (req, res) => {
 // Modul ichida sahnani qisman yangilash
 const updateScene = async (req, res) => {
     try {
-        const moduleSlug = getModuleSlug(req);
+        const mod = await resolveModule(req);
+        if (!mod) {
+            return res.status(404).json({
+                success: false,
+                message: `"${req.params.moduleSlug || 'default'}" slug li modul topilmadi`,
+            });
+        }
 
         // Trim ID
         if (req.body.id && typeof req.body.id === 'string') {
@@ -137,8 +180,8 @@ const updateScene = async (req, res) => {
             });
         }
 
-        // moduleSlug o'zgartirishga ruxsat bermaydi
-        if (req.body.moduleSlug && req.body.moduleSlug !== moduleSlug) {
+        // moduleSlug va moduleId o'zgartirishga ruxsat bermaydi
+        if (req.body.moduleSlug && req.body.moduleSlug !== mod.slug) {
             return res.status(400).json({
                 success: false,
                 message: 'Changing module slug is not allowed via PATCH',
@@ -147,18 +190,19 @@ const updateScene = async (req, res) => {
 
         const updates = { ...req.body };
         delete updates.moduleSlug; // modul o'zgartirishni bloklash
+        delete updates.moduleId;   // modul ID o'zgartirishni bloklash
         if (updates.pins) updates.pins = normalizePins(updates.pins);
 
         // Agar bu sahna initialScene bo'lyapti bo'lsa, modul ichida boshqalarini false qilish
         if (updates.initialScene) {
             await Scene.updateMany(
-                { moduleSlug, id: { $ne: req.params.id } },
+                { moduleId: mod._id, id: { $ne: req.params.id } },
                 { $set: { initialScene: false } }
             );
         }
 
         const scene = await Scene.findOneAndUpdate(
-            { moduleSlug, id: req.params.id },
+            { moduleId: mod._id, id: req.params.id },
             { $set: updates },
             { new: true, runValidators: true }
         );
@@ -166,7 +210,7 @@ const updateScene = async (req, res) => {
         if (!scene) {
             return res.status(404).json({
                 success: false,
-                message: `Scene with id "${req.params.id}" not found in module "${moduleSlug}"`,
+                message: `Scene with id "${req.params.id}" not found in module "${mod.slug}"`,
             });
         }
 
@@ -196,12 +240,19 @@ const updateScene = async (req, res) => {
 // Modul ichida sahnani o'chirish
 const deleteScene = async (req, res) => {
     try {
-        const moduleSlug = getModuleSlug(req);
+        const mod = await resolveModule(req);
+        if (!mod) {
+            return res.status(404).json({
+                success: false,
+                message: `"${req.params.moduleSlug || 'default'}" slug li modul topilmadi`,
+            });
+        }
+
         const targetId = req.params.id;
 
         // 1. Shu modul ichida boshqa sahna pinlarda bog'langanmi tekshirish
         const linkedScene = await Scene.findOne({
-            moduleSlug,
+            moduleId: mod._id,
             id: { $ne: targetId },
             'pins.target': targetId,
         });
@@ -215,8 +266,11 @@ const deleteScene = async (req, res) => {
 
         // 2. Shu modul minimapiga biriktirilganmi tekshirish
         const linkedMiniMap = await MiniMap.findOne({
-            moduleSlug,
-            'scenes.id': targetId,
+            moduleId: mod._id,
+            $or: [
+                { 'scenes.id': targetId },
+                { 'floors.scenes.id': targetId },
+            ],
         });
         if (linkedMiniMap) {
             return res.status(400).json({
@@ -225,11 +279,11 @@ const deleteScene = async (req, res) => {
             });
         }
 
-        const scene = await Scene.findOneAndDelete({ moduleSlug, id: targetId });
+        const scene = await Scene.findOneAndDelete({ moduleId: mod._id, id: targetId });
         if (!scene) {
             return res.status(404).json({
                 success: false,
-                message: `Scene with id "${req.params.id}" not found in module "${moduleSlug}"`,
+                message: `Scene with id "${req.params.id}" not found in module "${mod.slug}"`,
             });
         }
         res.status(200).json({

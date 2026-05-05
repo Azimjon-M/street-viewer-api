@@ -2,6 +2,7 @@ const fs = require('fs');
 const path = require('path');
 const Scene = require('../models/Scene');
 const MiniMap = require('../models/MiniMap');
+const Module = require('../models/Module');
 
 /**
  * Convert a stored image URL to an absolute file path on disk.
@@ -52,11 +53,29 @@ const getUsedFilePaths = async (uploadsRoot) => {
         });
     }
 
-    // ─── MiniMap images (barcha modullar) ─────────────────────
-    const miniMaps = await MiniMap.find({}, 'image');
+    // ─── MiniMap images (barcha modullar + floor planlari) ─────
+    const miniMaps = await MiniMap.find({}, 'image floors');
     for (const mm of miniMaps) {
         if (mm.image) {
             const p = urlToAbsPath(mm.image, uploadsRoot);
+            if (p) used.add(p);
+        }
+        // Ko'p qavatli floor plan rasmlarini ham tekshirish
+        if (mm.floors && mm.floors.length > 0) {
+            for (const floor of mm.floors) {
+                if (floor.image) {
+                    const p = urlToAbsPath(floor.image, uploadsRoot);
+                    if (p) used.add(p);
+                }
+            }
+        }
+    }
+
+    // ─── Module thumbnails ────────────────────────────────────
+    const modules = await Module.find({}, 'thumbnail');
+    for (const mod of modules) {
+        if (mod.thumbnail) {
+            const p = urlToAbsPath(mod.thumbnail, uploadsRoot);
             if (p) used.add(p);
         }
     }

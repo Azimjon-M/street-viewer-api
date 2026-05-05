@@ -17,7 +17,7 @@ const fs = require('fs');
  * @param {number} [options.width=480]       - Thumb kengligi (px)
  * @param {number} [options.aspectW=4]       - Nisbat bo'yicha kenglik qismi
  * @param {number} [options.aspectH=3]       - Nisbat bo'yicha balandlik qismi
- * @param {number} [options.quality=85]      - JPEG sifati (1-100)
+ * @param {number} [options.quality=80]      - WebP sifati (1-100)
  * @returns {Promise<string>} - Yaratilgan thumb fayl nomi
  */
 const generateThumb = async (mobileFilePath, thumbDir, options = {}) => {
@@ -25,7 +25,7 @@ const generateThumb = async (mobileFilePath, thumbDir, options = {}) => {
         width = 480,
         aspectW = 4,
         aspectH = 3,
-        quality = 85,
+        quality = 80,
     } = options;
 
     // Thumb balandligini 4:3 nisbatga qarab hisoblash
@@ -34,8 +34,8 @@ const generateThumb = async (mobileFilePath, thumbDir, options = {}) => {
     // Thumb fayl nomini mobile fayl nomidan yasash
     const mobileBasename = path.basename(mobileFilePath);
     const ext = path.extname(mobileBasename);
-    // "mobile-<timestamp>.<ext>" → "thumb-<timestamp>.jpg"
-    const thumbFilename = 'thumb-' + mobileBasename.replace(/^mobile-/, '').replace(ext, '') + '.jpg';
+    // "mobile-<timestamp>.<ext>" → "thumb-<timestamp>.webp"
+    const thumbFilename = 'thumb-' + mobileBasename.replace(/^mobile-/, '').replace(ext, '') + '.webp';
     const thumbFilePath = path.join(thumbDir, thumbFilename);
 
     // Papka mavjudligini tekshirish
@@ -49,7 +49,7 @@ const generateThumb = async (mobileFilePath, thumbDir, options = {}) => {
             fit: 'cover',       // Nisbatni saqlagan holda markazdan kesadi
             position: 'centre', // Markazdan kesish
         })
-        .jpeg({ quality })
+        .webp({ quality })
         .toFile(thumbFilePath);
 
     return thumbFilename;

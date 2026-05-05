@@ -17,7 +17,6 @@ router.post(
     async (req, res) => {
         try {
             const files = req.files || {};
-            const baseUrl = `${req.protocol}://${req.get('host')}`;
 
             const uploadedFile = (files.image && files.image[0]) || (files.full && files.full[0]);
 
@@ -36,17 +35,21 @@ router.post(
 
             const mobileDir = path.join(UPLOAD_ROOT, 'mobile');
             const thumbDir = path.join(UPLOAD_ROOT, 'thumb');
+            const previewDir = path.join(UPLOAD_ROOT, 'preview');
 
             if (!fs.existsSync(mobileDir)) fs.mkdirSync(mobileDir, { recursive: true });
             if (!fs.existsSync(thumbDir)) fs.mkdirSync(thumbDir, { recursive: true });
+            if (!fs.existsSync(previewDir)) fs.mkdirSync(previewDir, { recursive: true });
 
             // Yangi ismlarni yaratish (WebP formatiga o'tkazamiz)
             const mobileFilename = filename.replace('image-', 'mobile-').replace('full-', 'mobile-').replace(/\.[^.]+$/, '.webp');
             const thumbFilename = filename.replace('image-', 'thumb-').replace('full-', 'thumb-').replace(/\.[^.]+$/, '.webp');
+            const previewFilename = filename.replace('image-', 'preview-').replace('full-', 'preview-').replace(/\.[^.]+$/, '.webp');
             const finalFullFilename = filename.replace(/\.[^.]+$/, '.webp');
 
             const mobileFilePath = path.join(mobileDir, mobileFilename);
             const thumbFilePath = path.join(thumbDir, thumbFilename);
+            const previewFilePath = path.join(previewDir, previewFilename);
 
             // 1. Mobile versiya (2048px, WebP 70%)
             await sharp(originalPath)
@@ -59,6 +62,12 @@ router.post(
                 .resize(480, 360, { fit: 'cover', position: 'centre' })
                 .webp({ quality: 80 })
                 .toFile(thumbFilePath);
+
+            // 3. Preview versiya (Progressive load uchun) (1024px, WebP 60%)
+            await sharp(originalPath)
+                .resize({ width: 1024, withoutEnlargement: true })
+                .webp({ quality: 60 })
+                .toFile(previewFilePath);
 
             // 3. Full versiya (max 4000px, WebP 80%)
             const fullFilePath = path.join(UPLOAD_ROOT, 'full', finalFullFilename);
@@ -73,9 +82,10 @@ router.post(
             }
 
             const result = {
-                full: `${baseUrl}/uploads/full/${finalFullFilename}`,
-                mobile: `${baseUrl}/uploads/mobile/${mobileFilename}`,
-                thumb: `${baseUrl}/uploads/thumb/${thumbFilename}`,
+                full: `/uploads/full/${finalFullFilename}`,
+                mobile: `/uploads/mobile/${mobileFilename}`,
+                thumb: `/uploads/thumb/${thumbFilename}`,
+                preview: `/uploads/preview/${previewFilename}`,
             };
 
             res.status(200).json({
@@ -95,7 +105,7 @@ router.post(
 );
 
 // ─── POST /api/modules/:moduleSlug/upload/minimap-image ───────
-router.post('/minimap-image', protect, upload.single('mapImage'), (req, res) => {
+router.post('/minimap-image', protect, upload.single('mapImage'), async (req, res) => {
     try {
         if (!req.file) {
             return res.status(400).json({
@@ -103,12 +113,18 @@ router.post('/minimap-image', protect, upload.single('mapImage'), (req, res) => 
                 message: 'No minimap image provided',
             });
         }
-        const baseUrl = `${req.protocol}://${req.get('host')}`;
+
+        // Rasmning o'lchamlarini avtomatik aniqlash
+        const sharp = require('sharp');
+        const metadata = await sharp(req.file.path).metadata();
+
         res.status(200).json({
             success: true,
             message: 'MiniMap image uploaded successfully',
             data: {
-                image: `${baseUrl}/uploads/minimap/${req.file.filename}`,
+                image: `/uploads/minimap/${req.file.filename}`,
+                width: metadata.width || 1920,
+                height: metadata.height || 1080,
             },
         });
     } catch (error) {
@@ -129,12 +145,11 @@ router.post('/module-thumbnail', protect, upload.single('thumbnail'), (req, res)
                 message: 'No thumbnail image provided',
             });
         }
-        const baseUrl = `${req.protocol}://${req.get('host')}`;
         res.status(200).json({
             success: true,
             message: 'Module thumbnail uploaded successfully',
             data: {
-                thumbnail: `${baseUrl}/uploads/module-thumb/${req.file.filename}`,
+                thumbnail: `/uploads/module-thumb/${req.file.filename}`,
             },
         });
     } catch (error) {
@@ -145,5 +160,62 @@ router.post('/module-thumbnail', protect, upload.single('thumbnail'), (req, res)
         });
     }
 });
+
+// ─── POST /api/modules/:moduleSlug/upload/pin-audio ───────────
+router.post(
+    '/pin-audio',
+    protect,
+    (req, res, next) => {
+        const { mixedUpload } = require('../middleware/upload');
+        mixedUpload.fields([
+            { name: 'audio_uz', maxCount: 1 },
+            { name: 'audio_ru', maxCount: 1 },
+            { name: 'audio_en', maxCount: 1 },
+        ])(req, res, (err) => {
+            if (err) {
+                return res.status(400).json({
+                    success: false,
+                    message: err.message || 'Audio yuklashda xato',
+                });
+            }
+            next();
+        });
+    },
+    (req, res) => {
+        try {
+            const files = req.files || {};
+            const result = {};
+
+            if (files.audio_uz && files.audio_uz[0]) {
+                result.uz = `/uploads/audio/${files.audio_uz[0].filename}`;
+            }
+            if (files.audio_ru && files.audio_ru[0]) {
+                result.ru = `/uploads/audio/${files.audio_ru[0].filename}`;
+            }
+            if (files.audio_en && files.audio_en[0]) {
+                result.en = `/uploads/audio/${files.audio_en[0].filename}`;
+            }
+
+            if (Object.keys(result).length === 0) {
+                return res.status(400).json({
+                    success: false,
+                    message: 'Kamida bitta audio fayl yuklang (audio_uz, audio_ru yoki audio_en)',
+                });
+            }
+
+            res.status(200).json({
+                success: true,
+                message: 'Audio fayl(lar) muvaffaqiyatli yuklandi',
+                data: result,
+            });
+        } catch (error) {
+            res.status(500).json({
+                success: false,
+                message: 'Audio upload failed',
+                error: error.message,
+            });
+        }
+    }
+);
 
 module.exports = router;
