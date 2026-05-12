@@ -63,10 +63,10 @@ router.post(
                 .webp({ quality: 80 })
                 .toFile(thumbFilePath);
 
-            // 3. Preview versiya (Progressive load uchun) (1024px, WebP 60%)
+            // 3. Preview versiya (Progressive load — sekin tarmoq uchun) (640px, WebP 50%)
             await sharp(originalPath)
-                .resize({ width: 1024, withoutEnlargement: true })
-                .webp({ quality: 60 })
+                .resize({ width: 640, withoutEnlargement: true })
+                .webp({ quality: 50 })
                 .toFile(previewFilePath);
 
             // 3. Full versiya (max 4000px, WebP 80%)

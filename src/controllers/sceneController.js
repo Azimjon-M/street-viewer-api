@@ -17,6 +17,8 @@ const normalizePins = (pins = []) =>
         id: pin.id && pin.id.trim() ? pin.id.trim() : new mongoose.Types.ObjectId().toHexString(),
         // 'circle' → 'info' migratsiya (backward compat)
         icon: pin.icon === 'circle' ? 'info' : (pin.icon || 'pin'),
+        // targetModule slug ni normalize qilish (lowercase, trim)
+        targetModule: typeof pin.targetModule === 'string' ? pin.targetModule.trim().toLowerCase() : '',
     }));
 
 // ─── GET /scenes ──────────────────────────────────────────────

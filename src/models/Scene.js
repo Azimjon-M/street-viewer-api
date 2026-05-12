@@ -35,6 +35,14 @@ const pinSchema = new mongoose.Schema(
             type: String,
             default: '',
         },
+        // Cross-module navigatsiya: target sahna qaysi modulda ekanligi (slug).
+        // Bo'sh bo'lsa — pin sahnaning o'z moduli ichida.
+        targetModule: {
+            type: String,
+            default: '',
+            trim: true,
+            lowercase: true,
+        },
         icon: {
             type: String,
             enum: ['pin', 'info', 'circle'],  // 'circle' — backward compat, yangi: 'info'

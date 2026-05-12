@@ -1,40 +1,40 @@
 {
-  "name": "street-viewer",
-  "version": "1.0.0",
-  "description": "Virtual Tour Street Viewer - Backend API",
-  "main": "src/server.js",
-  "scripts": {
-    "start": "node src/server.js",
-    "dev": "nodemon src/server.js",
-    "seed": "node src/seed.js",
-    "seed:admin": "node src/seed-admin.js",
-    "cleanup": "node src/scripts/cleanup.js",
-    "cleanup:dry": "node src/scripts/cleanup.js --dry-run",
-    "test": "echo \"Error: no test specified\" && exit 1",
-    "migrate": "node src/scripts/migrate-to-modules.js"
-  },
-  "keywords": [
-    "street-viewer",
-    "virtual-tour",
-    "360",
-    "panorama"
-  ],
-  "author": "",
-  "license": "ISC",
-  "dependencies": {
-    "bcryptjs": "^3.0.3",
-    "cors": "^2.8.5",
-    "dotenv": "^16.4.7",
-    "express": "^4.21.2",
-    "jsonwebtoken": "^9.0.3",
-    "mongoose": "^8.10.1",
-    "multer": "^1.4.5-lts.1",
-    "node-cron": "^4.2.1",
-    "sharp": "^0.34.5",
-    "swagger-jsdoc": "^6.2.8",
-    "swagger-ui-express": "^5.0.1"
-  },
-  "devDependencies": {
-    "nodemon": "^3.1.9"
-  }
+    "name":  "street-viewer",
+    "version":  "1.0.0",
+    "description":  "Virtual Tour Street Viewer - Backend API",
+    "main":  "src/server.js",
+    "scripts":  {
+                    "start":  "node src/server.js",
+                    "dev":  "nodemon src/server.js",
+                    "seed":  "node src/seed.js",
+                    "seed:admin":  "node src/seed-admin.js",
+                    "cleanup":  "node src/scripts/cleanup.js",
+                    "cleanup:dry":  "node src/scripts/cleanup.js --dry-run",
+                    "test":  "echo \"Error: no test specified\" \u0026\u0026 exit 1",
+                    "migrate":  "node src/scripts/migrate-to-modules.js"
+                },
+    "keywords":  [
+                     "street-viewer",
+                     "virtual-tour",
+                     "360",
+                     "panorama"
+                 ],
+    "author":  "",
+    "license":  "ISC",
+    "dependencies":  {
+                         "bcryptjs":  "^3.0.3",
+                         "cors":  "^2.8.5",
+                         "dotenv":  "^16.4.7",
+                         "express":  "^4.21.2",
+                         "jsonwebtoken":  "^9.0.3",
+                         "mongoose":  "^8.10.1",
+                         "multer":  "^1.4.5-lts.1",
+                         "node-cron":  "^4.2.1",
+                         "sharp":  "^0.34.5",
+                         "swagger-jsdoc":  "^6.2.8",
+                         "swagger-ui-express":  "^5.0.1"
+                     },
+    "devDependencies":  {
+                            "nodemon":  "^3.1.9"
+                        }
 }

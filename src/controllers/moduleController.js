@@ -306,6 +306,41 @@ const migrateModuleReferences = async () => {
         }
         console.log('✅ [Migration] MiniMap migratsiyasi yakunlandi.');
     }
+
+    // 3. Pinlarda targetModule yo'q bo'lsa — sahnaning o'z moduli slug i bilan to'ldirish
+    //    (cross-module pin feature uchun explicit qiymat kerak)
+    const scenesWithPins = await Scene.find({
+        'pins.0': { $exists: true },
+    }).populate({ path: 'moduleId', select: 'slug' });
+
+    let pinFixCount = 0;
+    let sceneFixCount = 0;
+    for (const scene of scenesWithPins) {
+        const ownSlug = scene.moduleId?.slug || scene.moduleSlug;
+        if (!ownSlug) continue;
+
+        let changed = false;
+        const newPins = scene.pins.map((pin) => {
+            // Faqat navigatsiya pinlarida targetModule kerak; info pinlarda ham bo'lsa ham zarari yo'q
+            const hasTarget = pin.target && pin.target.trim() !== '';
+            const noTargetModule = !pin.targetModule || pin.targetModule.trim() === '';
+            if (hasTarget && noTargetModule) {
+                changed = true;
+                pinFixCount++;
+                return { ...pin.toObject(), targetModule: ownSlug };
+            }
+            return pin;
+        });
+
+        if (changed) {
+            scene.pins = newPins;
+            await scene.save();
+            sceneFixCount++;
+        }
+    }
+    if (pinFixCount > 0) {
+        console.log(`✅ [Migration] ${pinFixCount} ta pin (${sceneFixCount} ta sahnada) targetModule bilan to'ldirildi.`);
+    }
 };
 
 module.exports = {
